@@ -4,6 +4,10 @@ on init
     mkdir /mnt/usbdisk 0000 system system
     symlink /mnt/usbdisk /usbdisk
 
+    export EXTERNAL_STORAGE /mnt/sdcard
+    mkdir /mnt/sdcard 0000 system system
+    symlink /mnt/sdcard /sdcard
+
 on boot
 
 # cpufreq configurations
@@ -35,9 +39,11 @@ on boot
     chmod 0660 /proc/bluetooth/sleep/proto
     chown bluetooth bluetooth /sys/devices/platform/msm_serial_hs.0/clock
     chmod 0660 /sys/devices/platform/msm_serial_hs.0/clock
+    chown bluetooth bluetooth /dev/ttyHS0
+    chmod 0660 /dev/ttyHS0
 
 # Setup android gadget
-    write /sys/module/g_android/parameters/serial_number CM7-V9
+    write /sys/module/g_android/parameters/serial_number CM9-V9
     write /sys/module/g_android/parameters/product_id 0x1354
 
 #create  WIFI filesystem structure
@@ -89,6 +95,7 @@ on boot
     write /sys/bus/platform/drivers/msm_sdcc/msm_sdcc.1/polling 1
 
 service qmuxd /system/bin/qmuxd 
+    class main
 
 on property:init.svc.bluetoothd=running
     write /sys/devices/virtual/bluetooth/hci0/idle_timeout 7000
@@ -133,6 +140,7 @@ service abtfilt /system/bin/abtfilt -c -d -z -n
     oneshot
 
 service akmd /system/bin/akmd2
+    class main
     oneshot
 
 #on property:persist.sys.charging.disable=1

@@ -12,20 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-##########################################
-#History:
-#when       who         what, where, why
-#--------   ----        ---------------------------------------------------
-#2010-05-20 weilanying  modify VOLUME      ZTE_KEY_WLY_0520
-#2010-01-27 zhangxian   new file for moonckae bord config
-#2010-2-2   huoliping   Modify for Eclair. ZTE_KEYL_HLP_001
-#...
-##########################################
+
+#
+# Hard keys for ZTE V9/Light
+#
 
 key 115   VOLUME_UP         WAKE_DROPPED
 key 114   VOLUME_DOWN       WAKE_DROPPED
-key 102   HOME              WAKE
-key 139   MENU              WAKE_DROPPED
-key 158   BACK              WAKE_DROPPED
 
 

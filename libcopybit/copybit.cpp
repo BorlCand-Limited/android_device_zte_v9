@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (c) 2010 - 2011, Code Aurora Forum. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,9 +33,10 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 
-#include <hardware/copybit.h>
+#include <copybit.h>
 
 #include "gralloc_priv.h"
+#include "software_converter.h"
 
 #define DEBUG_MDP_ERRORS 1
 
@@ -124,10 +126,10 @@ static int get_format(int format) {
     case HAL_PIXEL_FORMAT_RGB_888:       return MDP_RGB_888;
     case HAL_PIXEL_FORMAT_RGBA_8888:     return MDP_RGBA_8888;
     case HAL_PIXEL_FORMAT_BGRA_8888:     return MDP_BGRA_8888;
-//    case HAL_PIXEL_FORMAT_YCrCb_422_SP:  return MDP_Y_CBCR_H2V1;
+    case HAL_PIXEL_FORMAT_YCrCb_422_SP:  return MDP_Y_CBCR_H2V1;
     case HAL_PIXEL_FORMAT_YCrCb_420_SP:  return MDP_Y_CBCR_H2V2;
     case HAL_PIXEL_FORMAT_YCbCr_422_SP:  return MDP_Y_CRCB_H2V1;
-//    case HAL_PIXEL_FORMAT_YCbCr_420_SP:  return MDP_Y_CRCB_H2V2;
+    case HAL_PIXEL_FORMAT_YCbCr_420_SP:  return MDP_Y_CRCB_H2V2;
     }
     return -1;
 }
@@ -136,19 +138,15 @@ static int get_format(int format) {
 static void set_image(struct mdp_img *img, const struct copybit_image_t *rhs) 
 {
     private_handle_t* hnd = (private_handle_t*)rhs->handle;
+    if(hnd == NULL){
+        LOGE("copybit: Invalid handle");
+        return;
+    }
     img->width      = rhs->w;
     img->height     = rhs->h;
     img->format     = get_format(rhs->format);
     img->offset     = hnd->offset;
-    #if defined(COPYBIT_MSM7K)
-        #if defined(USE_ASHMEM) && (TARGET_7x27)
-             img->memory_id = hnd->fd;
-        #else //USE_ASHMEM not defined
-             img->memory_id = hnd->fd;
-        #endif //end USE_ASHMEM
-    #else
-        img->memory_id  = hnd->fd;
-    #endif
+    img->memory_id  = hnd->fd;
 }
 /** setup rectangles */
 static void set_rects(struct copybit_context_t *dev,
@@ -156,8 +154,8 @@ static void set_rects(struct copybit_context_t *dev,
                       const struct copybit_rect_t *dst,
                       const struct copybit_rect_t *src,
                       const struct copybit_rect_t *scissor,
-                      uint32_t padding
-) {
+                      uint32_t horiz_padding,
+                      uint32_t vert_padding) {
     struct copybit_rect_t clip;
     intersect(&clip, scissor, dst);
 
@@ -184,19 +182,20 @@ static void set_rects(struct copybit_context_t *dev,
     }
     MULDIV(&e->src_rect.x, &e->src_rect.w, src->r - src->l, W);
     MULDIV(&e->src_rect.y, &e->src_rect.h, src->b - src->t, H);
+
     if (dev->mFlags & COPYBIT_TRANSFORM_FLIP_V) {
         if (dev->mFlags & COPYBIT_TRANSFORM_ROT_90) {
-            e->src_rect.x = e->src.width - (e->src_rect.x + e->src_rect.w) - padding;
+            e->src_rect.x = e->src.width - (e->src_rect.x + e->src_rect.w) - horiz_padding;
         }else{
-            e->src_rect.y = e->src.height - (e->src_rect.y + e->src_rect.h);
+            e->src_rect.y = e->src.height - (e->src_rect.y + e->src_rect.h) - vert_padding;
         }
     }
 
     if (dev->mFlags & COPYBIT_TRANSFORM_FLIP_H) {
         if (dev->mFlags & COPYBIT_TRANSFORM_ROT_90) {
-            e->src_rect.y = e->src.height - (e->src_rect.y + e->src_rect.h);
+            e->src_rect.y = e->src.height - (e->src_rect.y + e->src_rect.h) - vert_padding;
         }else{
-            e->src_rect.x = e->src.width - (e->src_rect.x + e->src_rect.w) - padding;
+            e->src_rect.x = e->src.width - (e->src_rect.x + e->src_rect.w) - horiz_padding;
         }
     }
 }
@@ -386,6 +385,18 @@ static int stretch_copybit(
         if (dst->w > MAX_DIMENSION || dst->h > MAX_DIMENSION)
             return -EINVAL;
 
+        if(src->format ==  HAL_PIXEL_FORMAT_YV12) {
+            if(0 == convertYV12toYCrCb420SP(src)){
+                //if inplace conversion,just convert and return
+                if(src->base == dst->base)
+                    return status;
+            }
+            else{
+                LOGE("Error copybit conversion from yv12 failed");
+                return -EINVAL;
+            }
+        }
+
         const uint32_t maxCount = sizeof(list.req)/sizeof(list.req[0]);
         const struct copybit_rect_t bounds = { 0, 0, dst->w, dst->h };
         struct copybit_rect_t clip;
@@ -396,10 +407,15 @@ static int stretch_copybit(
             mdp_blit_req* req = &list.req[list.count];
             int flags = 0;
 
+            private_handle_t* src_hnd = (private_handle_t*)src->handle;
+            if(src_hnd != NULL && src_hnd->flags & private_handle_t::PRIV_FLAGS_DO_NOT_FLUSH) {
+                flags |=  MDP_BLIT_NON_CACHED;
+            }
+ 
             set_infos(ctx, req, flags);
             set_image(&req->dst, dst);
             set_image(&req->src, src);
-            set_rects(ctx, req, dst_rect, src_rect, &clip, 0);//src->padding);
+            set_rects(ctx, req, dst_rect, src_rect, &clip, src->horiz_padding, src->vert_padding);
 
             if (req->src_rect.w<=0 || req->src_rect.h<=0)
                 continue;
