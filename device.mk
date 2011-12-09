@@ -66,6 +66,8 @@ DISABLE_DEXPREOPT := false
 PRODUCT_COPY_FILES += \
     device/zte/v9/msm-touchscreen.idc:system/usr/idc/msm-touchscreen.idc \
     device/zte/v9/msm-touchscreen.kl:system/usr/keylayout/msm-touchscreen.kl \
+    device/zte/v9/atmel-touchscreen.idc:system/usr/idc/atmel-touchscreen.idc \
+    device/zte/v9/atmel-touchscreen.kl:system/usr/keylayout/atmel-touchscreen.kl \
     device/zte/v9/v9-keypad.kl:system/usr/keylayout/v9-keypad.kl \
     device/zte/v9/prebuilt/gps.v9.so:system/lib/hw/gps.v9.so
 
